@@ -4,24 +4,32 @@
 # Uncomment this to turn on verbose mode.
 #export DH_VERBOSE=1
 
+# Where is our Go Path?
+export GOPATH := $(CURDIR)/debian/go
+export GO15VENDOREXPERIMENT := 1
+export GOPKG := github.com/acquia/statsgod
+
 %:
 	dh $@
+
+override_dh_auto_configure:
+	dh_auto_configure
+	mkdir -p $(shell dirname $(GOPATH)/src/$(GOPKG))
+	ln -s $(CURDIR)  $(GOPATH)/src/$(GOPKG)
 
 override_dh_auto_clean:
 	$(MAKE) clean
 
 override_dh_auto_build:
-	$(MAKE)
-
-override_dh_builddeb:
-	# Force gzip compression for older system wth dpkg version < 1.15.6
-	dh_builddeb -- -Zgzip
+	go install $(GOPKG)
 
 override_dh_auto_install:
+	dh_auto_install
 	mkdir -p $(CURDIR)/debian/statsgod/usr/bin
 	mkdir -p $(CURDIR)/debian/statsgod/etc/statsgod
 	install -Dm755 $(GOPATH)/bin/statsgod $(CURDIR)/debian/statsgod/usr/bin/statsgod
 	install -m644  $(CURDIR)/example.config.yml $(CURDIR)/debian/statsgod/etc/statsgod/config.yml
-	dh_installinit --no-start --name statsgod
 
-.PHONY: override_dh_auto_clean override_dh_auto_build override_dh_builddeb override_dh_auto_install
+override_dh_auto_test:
+	cd $(GOPATH)/src/$(GOPKG); go test -short `go list ./... |grep -v /vendor/ | grep -v /extras`
+

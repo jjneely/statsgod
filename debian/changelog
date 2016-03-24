@@ -1,5 +1,7 @@
 statsgod (0.2-1) trusty; urgency=low
 
   * Initial release
+  * Re work packaging to make use of Go's vendor support and remove
+    dependency on gom
 
- -- root <engineering@acquia.com>  Mon, 02 Nov 2015 20:11:44 +0000
+ -- Jack Neely <jjneely@42lines.net>  Wed, 10 Feb 2016 17:01:53 -0500

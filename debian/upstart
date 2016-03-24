@@ -1,0 +1,10 @@
+description "statsgod - Statsd compatible aggregation"
+author "Acquia, Inc. <engineering@acquia.com> with changes by Jack Neely <jjneely@42lines.net>"
+
+start on startup
+stop on shutdown
+
+setuid nobody
+setgid nobody
+
+exec /usr/bin/statsgod -config /etc/statsgod/config.yml
