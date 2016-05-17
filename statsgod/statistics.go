@@ -130,3 +130,25 @@ func (values ValueSlice) Sum() float64 {
 
 	return sum
 }
+
+// SumSquares fines the sum of each value squared
+func (values ValueSlice) SumSquares() float64 {
+	sum := float64(0)
+	for i := 0; i < values.Len(); i++ {
+		sum += values.Get(i) * values.Get(i)
+	}
+
+	return sum
+}
+
+// Stddev returns the standard deviation of all values
+func (values ValueSlice) Stddev() float64 {
+	mean := values.Mean()
+	sumOfDiffs := float64(0)
+
+	for i := 0; i < values.Len(); i++ {
+		sumOfDiffs += math.Pow(values.Get(i)-mean, 2)
+	}
+
+	return math.Sqrt(sumOfDiffs / float64(values.Len()))
+}

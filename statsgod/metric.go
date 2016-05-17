@@ -72,13 +72,14 @@ const (
 
 // MetricQuantile tracks a specified quantile measurement.
 type MetricQuantile struct {
-	Quantile  int        // The specified percentile.
-	Boundary  float64    // The calculated quantile value.
-	AllValues ValueSlice // All of the values.
-	Mean      float64    // The mean value within the quantile.
-	Median    float64    // The median value within the quantile.
-	Max       float64    // The maxumum value within the quantile.
-	Sum       float64    // The sum value within the quantile.
+	Quantile   int        // The specified percentile.
+	Boundary   float64    // The calculated quantile value.
+	AllValues  ValueSlice // All of the values.
+	Mean       float64    // The mean value within the quantile.
+	Median     float64    // The median value within the quantile.
+	Max        float64    // The maxumum value within the quantile.
+	Sum        float64    // The sum value within the quantile.
+	SumSquares float64    // The sum of squares within the quantile.
 }
 
 // Metric is our main data type.
@@ -92,6 +93,9 @@ type Metric struct {
 	MaxValue        float64          // The max value.
 	MeanValue       float64          // The cumulative mean.
 	MedianValue     float64          // The cumulative median.
+	Sum             float64          // The sum of all values.
+	StandardDev     float64          // The standard deviation of all values.
+	SumSquares      float64          // The sum of squares of all values.
 	Quantiles       []MetricQuantile // A list of quantile calculations.
 	AllValues       ValueSlice       // All of the values.
 	FlushTime       int              // What time are we sending Graphite?
@@ -233,6 +237,9 @@ func ProcessMetric(metric *Metric, flushDuration time.Duration, quantiles []int,
 		metric.MedianValue = metric.AllValues.Median()
 		metric.MeanValue = metric.AllValues.Mean()
 		metric.ValuesPerSecond = metric.TotalHits / float64(flushInterval)
+		metric.Sum = metric.AllValues.Sum()
+		metric.SumSquares = metric.AllValues.SumSquares()
+		metric.StandardDev = metric.AllValues.Stddev()
 
 		metric.Quantiles = make([]MetricQuantile, 0)
 		for _, q := range quantiles {
@@ -252,6 +259,7 @@ func ProcessMetric(metric *Metric, flushDuration time.Duration, quantiles []int,
 			quantile.Mean = quantile.AllValues.Mean()
 			quantile.Median = quantile.AllValues.Median()
 			quantile.Sum = quantile.AllValues.Sum()
+			quantile.SumSquares = quantile.AllValues.SumSquares()
 			metric.Quantiles = append(metric.Quantiles, *quantile)
 		}
 	}

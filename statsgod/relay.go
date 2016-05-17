@@ -173,21 +173,33 @@ func (c CarbonRelay) Relay(metric Metric, logger Logger) bool {
 		key = c.ApplyPrefixAndSuffix(metric.Key, NamespaceTypeSet)
 		sendCarbonMetric(key, metric.LastValue, stringTime, true, c, logger)
 	case MetricTypeTimer:
-		key = c.ApplyPrefixAndSuffix(metric.Key, NamespaceTypeRate)
+		key = c.ApplyPrefixAndSuffix(metric.Key+".count_ps", NamespaceTypeTimer)
 		sendCarbonMetric(key, metric.ValuesPerSecond, stringTime, true, c, logger)
 
+		key = c.ApplyPrefixAndSuffix(metric.Key+".count", NamespaceTypeTimer)
+		sendCarbonMetric(key, float64(metric.AllValues.Len()), stringTime, true, c, logger)
+
 		// Cumulative values.
-		key = c.ApplyPrefixAndSuffix(metric.Key+".mean_value", NamespaceTypeTimer)
+		key = c.ApplyPrefixAndSuffix(metric.Key+".mean", NamespaceTypeTimer)
 		sendCarbonMetric(key, metric.MeanValue, stringTime, true, c, logger)
 
-		key = c.ApplyPrefixAndSuffix(metric.Key+".median_value", NamespaceTypeTimer)
+		key = c.ApplyPrefixAndSuffix(metric.Key+".median", NamespaceTypeTimer)
 		sendCarbonMetric(key, metric.MedianValue, stringTime, true, c, logger)
 
-		key = c.ApplyPrefixAndSuffix(metric.Key+".max_value", NamespaceTypeTimer)
+		key = c.ApplyPrefixAndSuffix(metric.Key+".upper", NamespaceTypeTimer)
 		sendCarbonMetric(key, metric.MaxValue, stringTime, true, c, logger)
 
-		key = c.ApplyPrefixAndSuffix(metric.Key+".min_value", NamespaceTypeTimer)
+		key = c.ApplyPrefixAndSuffix(metric.Key+".lower", NamespaceTypeTimer)
 		sendCarbonMetric(key, metric.MinValue, stringTime, true, c, logger)
+
+		key = c.ApplyPrefixAndSuffix(metric.Key+".sum", NamespaceTypeTimer)
+		sendCarbonMetric(key, metric.Sum, stringTime, true, c, logger)
+
+		key = c.ApplyPrefixAndSuffix(metric.Key+".std", NamespaceTypeTimer)
+		sendCarbonMetric(key, metric.StandardDev, stringTime, true, c, logger)
+
+		key = c.ApplyPrefixAndSuffix(metric.Key+".sum_squares", NamespaceTypeTimer)
+		sendCarbonMetric(key, metric.SumSquares, stringTime, true, c, logger)
 
 		// Quantile values.
 		for _, q := range metric.Quantiles {
@@ -204,6 +216,12 @@ func (c CarbonRelay) Relay(metric Metric, logger Logger) bool {
 
 			key = c.ApplyPrefixAndSuffix(metric.Key+".sum_"+qkey, NamespaceTypeTimer)
 			sendCarbonMetric(key, q.Sum, stringTime, true, c, logger)
+
+			key = c.ApplyPrefixAndSuffix(metric.Key+".count_"+qkey, NamespaceTypeTimer)
+			sendCarbonMetric(key, float64(q.AllValues.Len()), stringTime, true, c, logger)
+
+			key = c.ApplyPrefixAndSuffix(metric.Key+".sum_squares_"+qkey, NamespaceTypeTimer)
+			sendCarbonMetric(key, q.SumSquares, stringTime, true, c, logger)
 		}
 	}
 	return true
