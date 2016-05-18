@@ -157,5 +157,21 @@ var _ = Describe("Statistics", func() {
 				Expect(sum).Should(Equal(float64(6003.0)))
 			})
 		})
+
+		Context("when the SumSquares is applied", func() {
+			values := ValueSlice{123, 234, 345, 456, 567, 678, 789, 890, 910, 1011}
+			It("should find the correct sum of squares value", func() {
+				sum := values.SumSquares()
+				Expect(sum).Should(Equal(float64(4.442861e+06)))
+			})
+		})
+
+		Context("when the stddev is applied", func() {
+			values := ValueSlice{123, 234, 345, 456, 567, 678, 789, 890, 910, 1011}
+			It("should find the correct standard deviation value", func() {
+				sum := values.Stddev()
+				Expect(sum).Should(Equal(float64(289.6998619260975)))
+			})
+		})
 	})
 })
