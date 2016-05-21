@@ -1,3 +1,9 @@
+statsgod (1.0.0-2) unstable; urgency=medium
+
+  * Ported code to be statsd compatible so we can do a direct replacement
+
+ -- Jack Neely <jjneely@42lines.net>  Wed, 18 May 2016 16:44:43 -0400
+
 statsgod (0.2-1) trusty; urgency=low
 
   * Initial release

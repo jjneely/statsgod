@@ -4,6 +4,9 @@ author "Acquia, Inc. <engineering@acquia.com> with changes by Jack Neely <jjneel
 start on startup
 stop on shutdown
 
+respawn
+respawn limit 10 5
+
 setuid nobody
 setgid nobody
 
