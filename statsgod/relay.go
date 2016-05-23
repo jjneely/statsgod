@@ -208,9 +208,6 @@ func (c CarbonRelay) Relay(metric Metric, logger Logger) bool {
 			key = c.ApplyPrefixAndSuffix(metric.Key+".mean_"+qkey, NamespaceTypeTimer)
 			sendCarbonMetric(key, q.Mean, stringTime, true, c, logger)
 
-			key = c.ApplyPrefixAndSuffix(metric.Key+".median_"+qkey, NamespaceTypeTimer)
-			sendCarbonMetric(key, q.Median, stringTime, true, c, logger)
-
 			key = c.ApplyPrefixAndSuffix(metric.Key+".upper_"+qkey, NamespaceTypeTimer)
 			sendCarbonMetric(key, q.Max, stringTime, true, c, logger)
 
@@ -254,6 +251,7 @@ func sendCarbonMetric(key string, v float64, t string, retry bool, relay CarbonR
 		_, writeErr := fmt.Fprint(conn, payload.String())
 		if writeErr != nil {
 			// If there was an error writing, recreate the connection and retry.
+			logger.Info.Printf("Error writing to connection: %s  Retry: %t", writeErr, retry)
 			_, releaseErr = relay.ConnectionPool.ReleaseConnection(conn, true, logger)
 		} else {
 			// If the metric was written, just release that connection back.
