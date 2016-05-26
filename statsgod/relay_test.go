@@ -135,9 +135,10 @@ var _ = Describe("Relay", func() {
 				config.Debug.Receipt = true
 				relay := CreateRelay(config, logger)
 				relayChannel := make(chan *Metric, 2)
+				parseChannel := make(chan string, 2)
 				quit := false
 
-				go RelayMetrics(relay, relayChannel, logger, &config, &quit)
+				go RelayMetrics(relay, relayChannel, parseChannel, logger, &config, &quit)
 				metricOne := CreateSimpleMetric("test.one", float64(123), MetricTypeGauge)
 				metricTwo := CreateSimpleMetric("test.two", float64(234), MetricTypeGauge)
 				relayChannel <- metricOne
@@ -149,6 +150,7 @@ var _ = Describe("Relay", func() {
 				Expect(len(relayChannel)).Should(Equal(0))
 			})
 
+			/* We replaced this is a go routine and no longer need to delete metrics
 			It("should delete metrics from the store after relaying", func() {
 				config.Relay.Type = RelayTypeCarbon
 				config.Carbon.Host = "127.0.0.1"
@@ -169,9 +171,10 @@ var _ = Describe("Relay", func() {
 					metrics[metric.Key] = *metric
 				}
 				Expect(len(metrics)).Should(Equal(4))
-				RelayAllMetrics(backendRelay, metrics, logger)
+				RelayAllMetrics(backendRelay, metrics, &config, logger)
 				Expect(len(metrics)).Should(Equal(0))
 			})
+			*/
 
 			It("should prepare internal stats", func() {
 				flushStart := time.Now()
@@ -181,7 +184,7 @@ var _ = Describe("Relay", func() {
 				config.Debug.Relay = true
 				metrics := make(map[string]Metric)
 				PrepareRuntimeMetrics(metrics, &config)
-				PrepareFlushMetrics(metrics, &config, flushStart, flushStop, flushCount)
+				PrepareFlushMetrics(metrics, &config, flushStart, flushStop, flushCount, logger)
 				// Runtime and flush information should be populated.
 				Expect(metrics["statsgod.test.runtime.memory.heapalloc"].LastValue).ShouldNot(Equal(float64(0.0)))
 				Expect(metrics["statsgod.test.runtime.memory.alloc"].LastValue).ShouldNot(Equal(float64(0.0)))

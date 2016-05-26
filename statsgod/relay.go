@@ -155,7 +155,9 @@ func (c CarbonRelay) ApplyPrefixAndSuffix(namespace string, metricType int) stri
 func (c CarbonRelay) Relay(metric Metric, logger Logger) bool {
 	ProcessMetric(&metric, c.FlushInterval, c.Percentile, logger)
 	// @todo: are we ever setting flush time?
+	// Yes, we are in the calling function -- jjneely
 	stringTime := strconv.Itoa(metric.FlushTime)
+
 	var key string
 	var qkey string
 
@@ -290,15 +292,13 @@ func (c MockRelay) Relay(metric Metric, logger Logger) bool {
 // At this point we are receiving Metric structures from a channel that need to
 // be aggregated by the specified namespace. We do this immediately, then when
 // the specified flush interval passes, we send aggregated metrics to storage.
-func RelayMetrics(relay MetricRelay, relayChannel chan *Metric, logger Logger, config *ConfigValues, quit *bool) {
+func RelayMetrics(relay MetricRelay, relayChannel chan *Metric, parseChannel chan string, logger Logger, config *ConfigValues, quit *bool) {
 	// Use a tick channel to determine if a flush message has arrived.
 	tick := time.Tick(config.Relay.Flush)
 	logger.Info.Printf("Flushing every %v", config.Relay.Flush)
 
 	// Track the flush cycle metrics.
-	var flushStart time.Time
-	var flushStop time.Time
-	var flushCount int
+	var metricCount int
 
 	// Internal storage.
 	metrics := make(map[string]Metric)
@@ -314,6 +314,7 @@ func RelayMetrics(relay MetricRelay, relayChannel chan *Metric, logger Logger, c
 		select {
 		case metric := <-relayChannel:
 			AggregateMetric(metrics, *metric)
+			metricCount++
 			if config.Debug.Receipt {
 				logger.Info.Printf("Metric: %v", metrics[metric.Key])
 			}
@@ -325,18 +326,21 @@ func RelayMetrics(relay MetricRelay, relayChannel chan *Metric, logger Logger, c
 		// is a tick, flush the in-memory metrics.
 		select {
 		case <-tick:
+			// Prepare usage metrics
+			logger.Info.Printf("parseChannel cap: %d", cap(parseChannel))
+			logger.Info.Printf("Metrics / second: %f", float64(metricCount)/float64(config.Relay.Flush/time.Second))
+			PrepareUsageMetrics(metrics, relayChannel, parseChannel,
+				metricCount, config)
+
 			// Prepare the runtime metrics.
 			PrepareRuntimeMetrics(metrics, config)
 
-			// Time and flush the received metrics.
-			flushCount = len(metrics)
-			flushStart = time.Now()
-			RelayAllMetrics(relay, metrics, logger)
-			flushStop = time.Now()
-
-			// Prepare and flush the internal metrics.
-			PrepareFlushMetrics(metrics, config, flushStart, flushStop, flushCount)
-			RelayAllMetrics(relay, metrics, logger)
+			// Flush the received metrics -- this may be several seconds on
+			// a busy daemon.  Use a goroutine here so we can continue to
+			// process incoming metrics.
+			go RelayAllMetrics(relay, metrics, config, logger)
+			metrics = make(map[string]Metric)
+			metricCount = 0
 		default:
 			// Flush interval hasn't passed yet.
 		}
@@ -344,12 +348,53 @@ func RelayMetrics(relay MetricRelay, relayChannel chan *Metric, logger Logger, c
 }
 
 // RelayAllMetrics is a helper to iterate over a Metric map and flush all to the relay.
-func RelayAllMetrics(relay MetricRelay, metrics map[string]Metric, logger Logger) {
-	for key, metric := range metrics {
-		metric.FlushTime = int(time.Now().Unix())
-		relay.Relay(metric, logger)
-		delete(metrics, key)
+func RelayAllMetrics(relay MetricRelay, metrics map[string]Metric, config *ConfigValues, logger Logger) {
+	// Metrics about the flush cycle
+	flushMetrics := make(map[string]Metric)
+
+	// Take the timestamp of when we cut off this bucket of metrics
+	timeStamp := time.Now()
+
+	// Reuse the flush code
+	flush := func(metrics map[string]Metric) {
+		for _, metric := range metrics {
+			metric.FlushTime = int(timeStamp.Unix())
+			relay.Relay(metric, logger)
+		}
 	}
+
+	// Actually flush
+	flush(metrics)
+	flushStop := time.Now()
+
+	// Prepare and flush metrics about the flush
+	PrepareFlushMetrics(flushMetrics, config, timeStamp, flushStop, len(metrics), logger)
+	flush(flushMetrics)
+}
+
+// PrepareUsageMetrics reports usage metrics
+func PrepareUsageMetrics(metrics map[string]Metric, relayChannel chan *Metric, parseChannel chan string, metricCount int, config *ConfigValues) {
+	if !config.Debug.Relay {
+		return
+	}
+
+	ns := fmt.Sprintf("statsgod.%s.", config.Service.Hostname)
+
+	countMetric := CreateSimpleMetric(ns+"metrics_received",
+		float64(metricCount), MetricTypeCounter)
+	metrics[countMetric.Key] = *countMetric
+
+	parseQueue := CreateSimpleMetric(ns+"parse_queue",
+		float64(len(parseChannel)), MetricTypeGauge)
+	metrics[parseQueue.Key] = *parseQueue
+
+	processQueue := CreateSimpleMetric(ns+"process_queue",
+		float64(len(relayChannel)), MetricTypeGauge)
+	metrics[processQueue.Key] = *processQueue
+
+	udppkts := CreateSimpleMetric(ns+"udp_packets",
+		float64(UdpPackets), MetricTypeGauge)
+	metrics[udppkts.Key] = *udppkts
 }
 
 // PrepareRuntimeMetrics creates key runtime metrics to monitor the health of the system.
@@ -390,7 +435,7 @@ func PrepareRuntimeMetrics(metrics map[string]Metric, config *ConfigValues) {
 }
 
 // PrepareFlushMetrics creates metrics that represent the speed and size of the flushes.
-func PrepareFlushMetrics(metrics map[string]Metric, config *ConfigValues, flushStart time.Time, flushStop time.Time, flushCount int) {
+func PrepareFlushMetrics(metrics map[string]Metric, config *ConfigValues, flushStart time.Time, flushStop time.Time, flushCount int, logger Logger) {
 	if config.Debug.Relay {
 
 		var nsBuffer bytes.Buffer

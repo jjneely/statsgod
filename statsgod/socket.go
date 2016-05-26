@@ -20,8 +20,10 @@ package statsgod
 
 import (
 	"fmt"
+	"io/ioutil"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -37,6 +39,11 @@ const (
 const (
 	// MinimumLengthMessage is the shortest message (or fragment) we can parse.
 	MinimumLengthMessage = 1
+)
+
+// Instrumentation
+var (
+	UdpPackets int
 )
 
 // Socket is the interface for all of our socket types.
@@ -144,11 +151,18 @@ func (l *SocketUdp) Listen(parseChannel chan string, logger Logger, config *Conf
 		panic(fmt.Sprintf("Could not establish a UDP socket. %s", err))
 	}
 	l.Listener = listener
+	if size, err := sockBufferMaxSize(logger); err == nil {
+		logger.Info.Printf("Setting UDP socket read buffer size to %d", size)
+		err = listener.SetReadBuffer(size)
+		if err != nil {
+			logger.Info.Printf("Failed setting UDP read buffer: %s", err)
+		}
+	} else {
+		logger.Info.Printf("Could not probe for maximum socket buffer size: %s", err)
+	}
 
 	logger.Info.Printf("UDP socket opened on %s", l.Addr)
-	for {
-		readInputUdp(*listener, parseChannel, logger, config)
-	}
+	readInputUdp(*listener, parseChannel, logger, config)
 }
 
 // Close closes an open socket. Conforms to Socket.Close().
@@ -243,6 +257,7 @@ func readInput(conn net.Conn, parseChannel chan string, logger Logger) {
 			metricCount = len(metrics)
 			overflow = ""
 			if length == readLength {
+				// XXX: We can have partial reads that are valid syntax!
 				// Attempt to parse the last metric. If that fails parse, we'll
 				// reduce the size by one and save the overflow for the next read.
 				_, err = ParseMetricString(metrics[len(metrics)-1])
@@ -261,6 +276,7 @@ func readInput(conn net.Conn, parseChannel chan string, logger Logger) {
 		}
 
 		// Zero out the buffer for the next read.
+		// XXX: Why?  Keep track of lengths
 		for b := range buf {
 			buf[b] = 0
 		}
@@ -270,13 +286,47 @@ func readInput(conn net.Conn, parseChannel chan string, logger Logger) {
 // readInputUdp parses the buffer for UDP sockets.
 func readInputUdp(conn net.UDPConn, parseChannel chan string, logger Logger, config *ConfigValues) {
 	buf := make([]byte, config.Connection.Udp.Maxpacket)
-	length, _, err := conn.ReadFromUDP(buf[0:])
-	if err == nil && length > MinimumLengthMessage {
-		metrics := strings.Split(string(buf[:length]), "\n")
-		for _, metric := range metrics {
-			if len(metric) > MinimumLengthMessage {
-				parseChannel <- metric
+	for {
+		length, err := conn.Read(buf)
+		if err != nil {
+			if err.Error() == "use of closed network connection" {
+				// Go, it would be great if there was a better way to detect
+				// this error...an enum?
+				// Connection closed, lets wrap up and finish
+				logger.Info.Printf("Stopping UDP read goroutine.")
+				return
 			}
+			logger.Error.Println("UDP read error:", err)
+		} else if length > MinimumLengthMessage {
+			metrics := strings.Split(string(buf[:length]), "\n")
+			for _, metric := range metrics {
+				if len(metric) > MinimumLengthMessage {
+					parseChannel <- metric
+				}
+			}
+
+			// Track the number of UDP packets we read
+			UdpPackets++
 		}
 	}
+}
+
+// sockBufferMaxSize() returns the maximum size that the UDP receive buffer
+// in the kernel can be set to in bytes and an error if not successful.
+func sockBufferMaxSize(logger Logger) (int, error) {
+
+	// XXX: This is Linux-only, support other OSes?
+	data, err := ioutil.ReadFile("/proc/sys/net/core/rmem_max")
+	if err != nil {
+		logger.Info.Printf("Could not detect maximum size of UDP socket buffer.")
+		return 0, err
+	}
+
+	i, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		logger.Error.Printf("Could not parse /proc/sys/net/core/rmem_max\n")
+		return 0, err
+	}
+
+	return i, nil
 }

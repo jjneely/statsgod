@@ -36,7 +36,7 @@ const (
 	// AverageMemoryPerRequest is how much memory we want to use per request.
 	AverageMemoryPerRequest = 10 << 10 // 10 KB
 	// MaxReqs is how many requests.
-	MaxReqs = AvailableMemory / AverageMemoryPerRequest
+	MaxReqs = AvailableMemory / AverageMemoryPerRequest // 1024
 )
 
 // parseChannel containing received metric strings.
@@ -90,9 +90,7 @@ func main() {
 	go statsgod.ParseMetrics(parseChannel, relayChannel, auth, logger, &quit)
 
 	// Flush the metrics to the remote stats collector.
-	for i := 0; i < config.Relay.Concurrency; i++ {
-		go statsgod.RelayMetrics(relay, relayChannel, logger, &config, &quit)
-	}
+	go statsgod.RelayMetrics(relay, relayChannel, parseChannel, logger, &config, &quit)
 
 	var socketTcp statsgod.Socket
 	var socketUdp statsgod.Socket
