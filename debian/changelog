@@ -1,6 +1,11 @@
-statsgod (1.0.0-2) unstable; urgency=medium
+statsgod (1.0.0-3) unstable; urgency=medium
 
   * Ported code to be statsd compatible so we can do a direct replacement
+  * Some additional error logging / handling
+  * Expose additional statistics for number of metrics/packets processed
+  * Correct a few logic/concurrency errors
+  * Removed sysV init and upstart conf -- these are not handled well by
+    deb over different Ubuntu versions.  Handle this configuration elsewhere.
 
  -- Jack Neely <jjneely@42lines.net>  Wed, 18 May 2016 16:44:43 -0400
 
