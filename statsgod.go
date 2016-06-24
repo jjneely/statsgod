@@ -40,7 +40,7 @@ const (
 )
 
 // parseChannel containing received metric strings.
-var parseChannel = make(chan string, MaxReqs)
+var parseChannel = make(chan []byte, MaxReqs)
 
 // relayChannel containing the Metric objects.
 var relayChannel = make(chan *statsgod.Metric, MaxReqs)

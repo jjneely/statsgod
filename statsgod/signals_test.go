@@ -48,7 +48,7 @@ var _ = Describe("Signals", func() {
 
 		It("should stop the parser when a quit signal is sent", func() {
 			ListenForSignals(finishChannel, &config, &configFile, logger)
-			parseChannel := make(chan string, 2)
+			parseChannel := make(chan []byte, 2)
 			relayChannel := make(chan *Metric, 2)
 			auth := CreateAuth(config)
 			quit := false

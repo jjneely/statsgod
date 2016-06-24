@@ -292,7 +292,7 @@ func (c MockRelay) Relay(metric Metric, logger Logger) bool {
 // At this point we are receiving Metric structures from a channel that need to
 // be aggregated by the specified namespace. We do this immediately, then when
 // the specified flush interval passes, we send aggregated metrics to storage.
-func RelayMetrics(relay MetricRelay, relayChannel chan *Metric, parseChannel chan string, logger Logger, config *ConfigValues, quit *bool) {
+func RelayMetrics(relay MetricRelay, relayChannel chan *Metric, parseChannel chan []byte, logger Logger, config *ConfigValues, quit *bool) {
 	// Use a tick channel to determine if a flush message has arrived.
 	tick := time.Tick(config.Relay.Flush)
 	logger.Info.Printf("Flushing every %v", config.Relay.Flush)
@@ -373,7 +373,7 @@ func RelayAllMetrics(relay MetricRelay, metrics map[string]Metric, config *Confi
 }
 
 // PrepareUsageMetrics reports usage metrics
-func PrepareUsageMetrics(metrics map[string]Metric, relayChannel chan *Metric, parseChannel chan string, metricCount int, config *ConfigValues) {
+func PrepareUsageMetrics(metrics map[string]Metric, relayChannel chan *Metric, parseChannel chan []byte, metricCount int, config *ConfigValues) {
 	if !config.Debug.Relay {
 		return
 	}

@@ -19,6 +19,7 @@
 package statsgod
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"sort"
@@ -281,7 +282,7 @@ func getMetricType(short string) (int, error) {
 }
 
 // ParseMetrics parses the strings received from clients and creates Metric structures.
-func ParseMetrics(parseChannel chan string, relayChannel chan *Metric, auth Auth, logger Logger, quit *bool) {
+func ParseMetrics(parseChannel chan []byte, relayChannel chan *Metric, auth Auth, logger Logger, quit *bool) {
 
 	var authOk bool
 	var authErr error
@@ -290,21 +291,29 @@ func ParseMetrics(parseChannel chan string, relayChannel chan *Metric, auth Auth
 		// Process the channel as soon as requests come in. If they are valid Metric
 		// structures, we move them to a new channel to be flushed on an interval.
 		select {
-		case metricString := <-parseChannel:
-			// Authenticate the metric.
-			authOk, authErr = auth.Authenticate(&metricString)
-			if authErr != nil || !authOk {
-				logger.Error.Printf("Auth Error: %v, %s", authOk, authErr)
-				break
-			}
+		case buf := <-parseChannel:
+			for _, metricBuf := range bytes.Split(buf, []byte("\n")) {
+				if len(metricBuf) < MinimumLengthMessage {
+					continue
+				}
+				metricString := string(metricBuf)
+				// Authenticate the metric.
+				authOk, authErr = auth.Authenticate(&metricString)
+				if authErr != nil || !authOk {
+					logger.Error.Printf("Auth Error: %v, %s", authOk, authErr)
+					continue
+				}
 
-			metric, err := ParseMetricString(metricString)
-			if err != nil {
-				logger.Error.Printf("Invalid metric: %s, %s", metricString, err)
-				break
+				metric, err := ParseMetricString(metricString)
+				if err != nil {
+					logger.Error.Printf("Invalid metric: %s, %s", metricString, err)
+					logger.Error.Printf("len of buf: %d", len(metricBuf))
+					logger.Error.Printf("'%v'", metricBuf)
+					continue
+				}
+				// Push the metric onto the channel to be aggregated and flushed.
+				relayChannel <- metric
 			}
-			// Push the metric onto the channel to be aggregated and flushed.
-			relayChannel <- metric
 		case <-time.After(time.Second):
 			// Test for a quit signal.
 		}

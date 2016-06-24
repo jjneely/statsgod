@@ -253,16 +253,16 @@ var _ = Describe("Metrics", func() {
 				config.Service.Auth = AuthTypeConfigToken
 				config.Service.Tokens["test-token"] = true
 
-				parseChannel := make(chan string, 2)
+				parseChannel := make(chan []byte, 2)
 				relayChannel := make(chan *Metric, 2)
 				auth := CreateAuth(config)
 				quit := false
 				go ParseMetrics(parseChannel, relayChannel, auth, logger, &quit)
-				parseChannel <- "test-token.test.one:123|c"
-				parseChannel <- "test-token.test.two:234|g"
-				parseChannel <- "bad-metric"
-				parseChannel <- "test-token.bad-metric|g"
-				parseChannel <- "bad-token.test.two:234|g"
+				parseChannel <- []byte("test-token.test.one:123|c")
+				parseChannel <- []byte("test-token.test.two:234|g")
+				parseChannel <- []byte("bad-metric")
+				parseChannel <- []byte("test-token.bad-metric|g")
+				parseChannel <- []byte("bad-token.test.two:234|g")
 				for len(parseChannel) > 0 {
 					// Wait for the channel to be emptied.
 					time.Sleep(time.Microsecond)

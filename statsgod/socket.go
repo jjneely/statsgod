@@ -48,7 +48,7 @@ var (
 
 // Socket is the interface for all of our socket types.
 type Socket interface {
-	Listen(parseChannel chan string, logger Logger, config *ConfigValues)
+	Listen(parseChannel chan []byte, logger Logger, config *ConfigValues)
 	Close(logger Logger)
 	GetAddr() string
 	SocketIsActive() bool
@@ -96,7 +96,7 @@ type SocketTcp struct {
 
 // Listen listens on a socket and populates a channel with received messages.
 // Conforms to Socket.Listen().
-func (l *SocketTcp) Listen(parseChannel chan string, logger Logger, config *ConfigValues) {
+func (l *SocketTcp) Listen(parseChannel chan []byte, logger Logger, config *ConfigValues) {
 	if l.Addr == "" {
 		panic("Could not establish a TCP socket. Address must be specified.")
 	}
@@ -141,7 +141,7 @@ type SocketUdp struct {
 
 // Listen listens on a socket and populates a channel with received messages.
 // Conforms to Socket.Listen().
-func (l *SocketUdp) Listen(parseChannel chan string, logger Logger, config *ConfigValues) {
+func (l *SocketUdp) Listen(parseChannel chan []byte, logger Logger, config *ConfigValues) {
 	if l.Addr == "" {
 		panic("Could not establish a UDP socket. Addr must be specified.")
 	}
@@ -189,7 +189,7 @@ type SocketUnix struct {
 
 // Listen listens on a socket and populates a channel with received messages.
 // Conforms to Socket.Listen().
-func (l *SocketUnix) Listen(parseChannel chan string, logger Logger, config *ConfigValues) {
+func (l *SocketUnix) Listen(parseChannel chan []byte, logger Logger, config *ConfigValues) {
 	if l.Addr == "" {
 		panic("Could not establish a Unix socket. No sock file specified.")
 	}
@@ -229,7 +229,7 @@ func (l *SocketUnix) GetAddr() string {
 }
 
 // readInput parses the buffer for TCP and Unix sockets.
-func readInput(conn net.Conn, parseChannel chan string, logger Logger) {
+func readInput(conn net.Conn, parseChannel chan []byte, logger Logger) {
 	defer conn.Close()
 	// readLength is the length of our buffer.
 	readLength := 512
@@ -270,7 +270,8 @@ func readInput(conn net.Conn, parseChannel chan string, logger Logger) {
 			// Send the metrics to be parsed.
 			for i := 0; i < metricCount; i++ {
 				if len(metrics[i]) > MinimumLengthMessage {
-					parseChannel <- metrics[i]
+					// XXX: Hack to support a channel of []byte
+					parseChannel <- []byte(metrics[i])
 				}
 			}
 		}
@@ -284,30 +285,58 @@ func readInput(conn net.Conn, parseChannel chan string, logger Logger) {
 }
 
 // readInputUdp parses the buffer for UDP sockets.
-func readInputUdp(conn net.UDPConn, parseChannel chan string, logger Logger, config *ConfigValues) {
-	buf := make([]byte, config.Connection.Udp.Maxpacket)
-	for {
-		length, err := conn.Read(buf)
-		if err != nil {
-			if err.Error() == "use of closed network connection" {
-				// Go, it would be great if there was a better way to detect
-				// this error...an enum?
-				// Connection closed, lets wrap up and finish
-				logger.Info.Printf("Stopping UDP read goroutine.")
-				return
-			}
-			logger.Error.Println("UDP read error:", err)
-		} else if length > MinimumLengthMessage {
-			metrics := strings.Split(string(buf[:length]), "\n")
-			for _, metric := range metrics {
-				if len(metric) > MinimumLengthMessage {
-					parseChannel <- metric
-				}
-			}
+func readInputUdp(conn net.UDPConn, parseChannel chan []byte, logger Logger, config *ConfigValues) {
+	// config.Connection.Udp.Maxpacket is our max read
 
-			// Track the number of UDP packets we read
-			UdpPackets++
+	// Large buffer to handle high UDP traffic, and manage GC pressure
+	bufSize := 1 << 20
+	buf := make([]byte, bufSize)
+	offset := 0
+
+	flush := func() []byte {
+		parseChannel <- buf[0:offset]
+		offset = 0
+		return make([]byte, bufSize)
+	}
+
+	// Set initial deadline: 500ms
+	sockErr := conn.SetDeadline(time.Now().Add(time.Millisecond * 500))
+	if sockErr != nil {
+		logger.Error.Printf("Error seting socket deadline: %s", sockErr)
+		panic(sockErr)
+	}
+
+	for {
+		length, err := conn.Read(buf[offset : offset+config.Connection.Udp.Maxpacket])
+		if err == nil {
+			// Always delimit our metrics
+			buf[offset+length] = '\n'
+			offset = offset + length + 1
+		} else if terr, ok := err.(net.Error); ok && terr.Timeout() {
+			if offset > 0 {
+				buf = flush()
+			}
+			sockErr = conn.SetDeadline(time.Now().Add(time.Millisecond * 500))
+			if sockErr != nil {
+				panic(sockErr)
+			}
+		} else if strings.HasSuffix(err.Error(), "use of closed network connection") {
+			// Go, it would be great if there was a better way to detect
+			// this error...an enum?
+			// Connection closed, lets wrap up and finish
+			logger.Info.Printf("Stopping UDP read goroutine.")
+			return
+		} else {
+			logger.Error.Println("UDP read error:", err)
 		}
+
+		// Full Buffer?
+		if bufSize-offset <= config.Connection.Udp.Maxpacket {
+			buf = flush()
+		}
+
+		// Track the number of UDP packets we read
+		UdpPackets++
 	}
 }
 

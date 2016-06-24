@@ -17,6 +17,7 @@
 package statsgod_test
 
 import (
+	"bytes"
 	"fmt"
 	. "github.com/acquia/statsgod/statsgod"
 	. "github.com/onsi/ginkgo"
@@ -48,7 +49,7 @@ var testSockets = []struct {
 }
 
 var sockets = make([]Socket, 3)
-var parseChannel = make(chan string)
+var parseChannel = make(chan []byte)
 var logger = *CreateLogger(ioutil.Discard, ioutil.Discard, ioutil.Discard, ioutil.Discard)
 var config, _ = CreateConfig("")
 
@@ -58,7 +59,7 @@ var _ = Describe("Sockets", func() {
 		It("should contain the required functions", func() {
 			for i, _ := range testSockets {
 				_, ok := sockets[i].(interface {
-					Listen(parseChannel chan string, logger Logger, config *ConfigValues)
+					Listen(parseChannel chan []byte, logger Logger, config *ConfigValues)
 					Close(logger Logger)
 					GetAddr() string
 					SocketIsActive() bool
@@ -80,22 +81,25 @@ var _ = Describe("Sockets", func() {
 				for _, sm := range ts.socketMessages {
 					sendSocketMessage(ts.socketDesc, sockets[i], sm)
 
-					receivedMessages := strings.Split(sm, "\n")
-					for _, rm := range receivedMessages {
-						message := ""
+					receivedMessages := make([]byte, len(sm))
+					offset := 0
+					for {
 						select {
-						case message = <-parseChannel:
+						case message := <-parseChannel:
+							copy(receivedMessages[offset:offset+len(message)], message)
+							offset += len(message)
 						case <-time.After(5 * time.Second):
-							message = ""
+							break
+							// 5 second timeout
 						}
-						Expect(strings.TrimSpace(message)).Should(Equal(strings.TrimSpace(rm)))
 					}
+					Expect(bytes.TrimSpace(receivedMessages)).Should(Equal([]byte(strings.TrimSpace(sm))))
 				}
 			}
 		})
 
 		It("should ignore empty values", func() {
-			message := ""
+			var message []byte
 			for i, ts := range testSockets {
 				sendSocketMessage(ts.socketDesc, sockets[i], "\x00")
 				sendSocketMessage(ts.socketDesc, sockets[i], "\n")
@@ -103,9 +107,9 @@ var _ = Describe("Sockets", func() {
 				select {
 				case message = <-parseChannel:
 				case <-time.After(100 * time.Microsecond):
-					message = ""
+					message = []byte("")
 				}
-				Expect(message).Should(Equal(""))
+				Expect(message).Should(Equal([]byte("")))
 			}
 		})
 

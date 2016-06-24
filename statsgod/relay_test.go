@@ -135,7 +135,7 @@ var _ = Describe("Relay", func() {
 				config.Debug.Receipt = true
 				relay := CreateRelay(config, logger)
 				relayChannel := make(chan *Metric, 2)
-				parseChannel := make(chan string, 2)
+				parseChannel := make(chan []byte, 2)
 				quit := false
 
 				go RelayMetrics(relay, relayChannel, parseChannel, logger, &config, &quit)
